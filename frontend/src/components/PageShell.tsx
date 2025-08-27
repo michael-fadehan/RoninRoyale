@@ -1,0 +1,40 @@
+"use client";
+import React from 'react';
+import { usePathname } from 'next/navigation';
+import ParticleBackground from './ParticleBackground';
+import RouteTransition from './RouteTransition';
+
+export default function PageShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
+  // pick overlay image and tint per route
+  let overlayImage = '/assets/section-illustration.svg';
+  let overlayOpacity = 0.18;
+  let overlayTint = 'rgba(0,0,0,0)';
+  if (pathname?.startsWith('/staking')) {
+    overlayImage = '/assets/overlay-1.png';
+    overlayOpacity = 0.22;
+    overlayTint = 'rgba(12,12,12,0.12)';
+  } else if (pathname?.startsWith('/profile')) {
+    overlayImage = '/assets/section-illustration2.svg';
+    overlayOpacity = 0.24;
+    overlayTint = 'rgba(0,0,0,0.14)';
+  } else if (pathname?.startsWith('/games')) {
+    overlayImage = '/assets/overlay-1.png';
+    overlayOpacity = 0.16;
+    overlayTint = 'rgba(0,0,0,0.08)';
+  }
+
+  return (
+    <>
+      <ParticleBackground />
+      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
+        <div style={{ position: 'absolute', inset: 0, background: overlayTint }} />
+        <div style={{ position: 'absolute', right: '-6%', bottom: '-60px', width: '1100px', height: '1100px', backgroundImage: `url(${overlayImage})`, backgroundRepeat: 'no-repeat', backgroundPosition: 'center', backgroundSize: 'contain', opacity: overlayOpacity }} />
+      </div>
+      <RouteTransition>{children}</RouteTransition>
+    </>
+  );
+}
+
+

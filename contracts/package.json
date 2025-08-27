@@ -1,0 +1,31 @@
+{
+  "name": "ronin-royale-contracts",
+  "version": "0.1.0",
+  "description": "Smart contracts for Ronin Royale dApp",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy.ts",
+    "deploy:ronin-testnet": "hardhat run scripts/deploy.ts --network ronin-testnet",
+    "verify": "hardhat verify --network ronin-testnet",
+    "lint": "solhint 'contracts/**/*.sol'",
+    "lint:fix": "solhint 'contracts/**/*.sol' --fix"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0",
+    "@openzeppelin/contracts-upgradeable": "^5.0.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@types/chai": "^4.3.11",
+    "@types/mocha": "^10.0.4",
+    "chai": "^4.3.11",
+    "hardhat": "^2.19.0",
+    "hardhat-gas-reporter": "^1.0.9",
+    "solhint": "^4.0.0",
+    "solidity-coverage": "^0.8.5"
+  }
+}
+
+

@@ -1,0 +1,50 @@
+{
+  "name": "ronin-royale-backend",
+  "version": "0.1.0",
+  "description": "Backend API for Ronin Royale dApp",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "*",
+    "cors": "*",
+    "helmet": "*",
+    "dotenv": "*",
+    "mongoose": "*",
+    "pg": "*",
+    "typeorm": "*",
+    "web3": "*",
+    "ethers": "*",
+    "jsonwebtoken": "*",
+    "bcryptjs": "*",
+    "express-rate-limit": "*",
+    "express-validator": "*",
+    "winston": "*",
+    "node-cron": "*",
+    "axios": "*"
+  },
+  "devDependencies": {
+    "@types/express": "*",
+    "@types/cors": "*",
+    "@types/bcryptjs": "*",
+    "@types/jsonwebtoken": "*",
+    "@types/node-cron": "*",
+    "@types/pg": "*",
+    "@typescript-eslint/eslint-plugin": "*",
+    "@typescript-eslint/parser": "*",
+    "eslint": "*",
+    "jest": "*",
+    "@types/jest": "*",
+    "ts-node-dev": "*",
+    "typescript": "*"
+  }
+}
+
+
