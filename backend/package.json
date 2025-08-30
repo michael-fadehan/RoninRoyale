@@ -17,6 +17,8 @@
     "cors": "*",
     "helmet": "*",
     "dotenv": "*",
+    "socket.io": "^4.7.5",
+    "ioredis": "^5.4.1",
     "mongoose": "*",
     "pg": "*",
     "typeorm": "*",

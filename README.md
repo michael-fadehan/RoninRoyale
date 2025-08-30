@@ -22,3 +22,22 @@ Run locally:
    ```
 
 
+### Contracts - Deploying CoinflipHouse to Ronin Saigon (testnet)
+
+1. Create `contracts/.env` with:
+
+```
+PRIVATE_KEY=0xYOUR_PRIVATE_KEY
+HOUSE_SIGNER=0xBACKEND_SIGNER_ADDRESS
+```
+
+2. From `contracts/`:
+
+```
+npm i
+npm run deploy:house:ronin-testnet
+```
+
+After deployment, note the address and add to frontend `.env.local` as `NEXT_PUBLIC_HOUSE_ADDRESS`, and backend `.env` as `HOUSE_ADDRESS`.
+
+

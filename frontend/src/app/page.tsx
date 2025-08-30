@@ -2,22 +2,8 @@
 
 import ParticleBackground from '../components/ParticleBackground';
 import { useState, useEffect, useRef } from 'react';
-import WalletModal from '../components/WalletModal';
-// wagmi hook exports can vary by version; require at runtime and fall back to no-ops
-let useAccount: any = () => ({ address: undefined, isConnected: false });
-let useDisconnect: any = () => ({ disconnect: () => {} });
-let useEnsName: any = () => ({ data: undefined });
-let useSwitchNetwork: any = () => ({ switchNetwork: () => {} });
-try {
-  // @ts-ignore - dynamic require to handle different module layouts across versions
-  const wagmi = require('wagmi');
-  useAccount = wagmi.useAccount || useAccount;
-  useDisconnect = wagmi.useDisconnect || useDisconnect;
-  useEnsName = wagmi.useEnsName || useEnsName;
-  useSwitchNetwork = wagmi.useSwitchNetwork || useSwitchNetwork;
-} catch (e) {
-  // ignore — fallbacks used
-}
+import { useAccount, useDisconnect, useEnsName } from 'wagmi';
+import WalletSelectionModal from '../components/WalletSelectionModal';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Pagination } from 'swiper/modules';
 import 'swiper/css';
@@ -53,17 +39,15 @@ const faqs = [
 
 export default function Home() {
   const [openIdx, setOpenIdx] = useState(0);
-  const [walletModalOpen, setWalletModalOpen] = useState(false);
-  const [connectedWallet, setConnectedWallet] = useState(null as any);
   const [mounted, setMounted] = useState(false);
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
   const { address, isConnected } = useAccount();
-  const { data: ensName } = useEnsName({ address });
+  const { data: ensName } = useEnsName({
+    address,
+    chainId: 1, // Only try ENS on Ethereum mainnet
+    query: { enabled: false } // Disable ENS lookup for now since we're on Ronin
+  });
   const { disconnect } = useDisconnect();
-  const { switchNetwork } = useSwitchNetwork();
-
-  function handleConnect(res: any) {
-    setConnectedWallet(res);
-  }
 
   function shortenAddress(addr?: string) {
     if (!addr) return '';
@@ -631,7 +615,7 @@ export default function Home() {
           position: absolute;
           left: 0;
           right: 0;
-          bottom: -48px; /* centered below cards */
+          bottom: -16px; /* moved much closer to cards */
           margin: 0 auto;
           text-align: center;
           z-index: 50;
@@ -718,28 +702,18 @@ export default function Home() {
               <a href="#" style={{ color: '#fff', textDecoration: 'none', fontWeight: 600, letterSpacing: 1 }}>PROFILE</a>
             </nav>
             {mounted && isConnected ? (
-              <div style={{ position: 'relative' }}>
-                <button onClick={() => setWalletModalOpen(true)} style={{
-                  background: 'transparent',
-                  color: '#fff',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 6,
-                  padding: '8px 16px',
-                  fontWeight: 700,
-                  fontSize: 15,
-                  cursor: 'pointer',
-                }}>
-                  {ensName ?? shortenAddress(address)}
-                </button>
-                {/* Profile dropdown */}
-                <div style={{ position: 'absolute', right: 0, marginTop: 8, background: '#333', padding: 8, borderRadius: 8, display: 'none' }}>
-                  <button onClick={() => { navigator.clipboard.writeText(address || ''); }} style={{ display: 'block', padding: 8, color: '#fff', background: 'transparent', border: 'none' }}>Copy Address</button>
-                  <button onClick={() => { disconnect(); }} style={{ display: 'block', padding: 8, color: '#fff', background: 'transparent', border: 'none' }}>Disconnect</button>
-                  <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', margin: '8px 0' }} />
-                  <button onClick={() => switchNetwork && switchNetwork(1)} style={{ display: 'block', padding: 8, color: '#fff', background: 'transparent', border: 'none' }}>Switch to Mainnet</button>
-                  <button onClick={() => { /* placeholder for Ronin switch - depends on provider */ }} style={{ display: 'block', padding: 8, color: '#fff', background: 'transparent', border: 'none' }}>Switch to Ronin</button>
-                </div>
-              </div>
+              <button onClick={() => setWalletModalOpen(true)} style={{
+                background: 'transparent',
+                color: '#fff',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 6,
+                padding: '8px 16px',
+                fontWeight: 700,
+                fontSize: 15,
+                cursor: 'pointer',
+              }}>
+                {ensName ?? shortenAddress(address)}
+              </button>
             ) : (
               <button onClick={() => setWalletModalOpen(true)} style={{
                 background: '#FFB300',
@@ -766,8 +740,8 @@ export default function Home() {
                 <div className="hero-subtitle">Get Started - Play, Learn and Earn</div>
                 <div className="hero-desc">Vestibulum faucibus eget erat eget pretium. Donec commodo convallis ligula, eget suscipit orci.</div>
                 <div className="hero-actions">
-                  <button className="hero-btn primary">GET STARTED</button>
-                  <button className="hero-btn secondary">STAKING</button>
+                  <button className="hero-btn primary" onClick={() => setWalletModalOpen(true)}>GET STARTED</button>
+                  <button className="hero-btn secondary" onClick={() => window.location.href = '/staking'}>STAKING</button>
                 </div>
               </div>
               <div className="hero-right">
@@ -817,7 +791,7 @@ export default function Home() {
                 Vestibulum faucibus eget erat eget pretium. Donec commodo convallis ligula, eget suscipit orci.
               </div>
               <div className="quest-actions">
-                <button className="quest-btn connect">CONNECT WALLET</button>
+                <button className="quest-btn connect" onClick={() => setWalletModalOpen(true)}>CONNECT WALLET</button>
                 <button className="quest-btn go">GO</button>
               </div>
             </div>
@@ -863,7 +837,10 @@ export default function Home() {
             <span>Contact: info@roninroyale.com</span>
           </div>
         </footer>
-        <WalletModal open={walletModalOpen} onClose={() => setWalletModalOpen(false)} onConnect={handleConnect} />
+        <WalletSelectionModal
+          open={walletModalOpen}
+          onClose={() => setWalletModalOpen(false)}
+        />
       </main>
     </>
   );
