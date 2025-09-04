@@ -4,6 +4,7 @@ import React from 'react';
 import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { config } from './reown';
+import { WalletProvider } from './wallet-context';
 
 // Optimized QueryClient for faster wallet state sync
 const queryClient = new QueryClient({
@@ -33,7 +34,11 @@ const queryClient = new QueryClient({
 export function Providers({ children }: { children: any }) {
   return (
     <WagmiProvider config={config}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <WalletProvider>
+          {children}
+        </WalletProvider>
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }

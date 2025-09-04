@@ -4,6 +4,9 @@ import ParticleBackground from '../components/ParticleBackground';
 import { useState, useEffect, useRef } from 'react';
 import { useAccount, useDisconnect, useEnsName } from 'wagmi';
 import WalletSelectionModal from '../components/WalletSelectionModal';
+import WalletHeader from '../components/WalletHeader';
+import { useWalletContext } from '../lib/wallet-context';
+import { roninSaigon } from '../lib/reown';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Pagination } from 'swiper/modules';
 import 'swiper/css';
@@ -40,14 +43,14 @@ const faqs = [
 export default function Home() {
   const [openIdx, setOpenIdx] = useState(0);
   const [mounted, setMounted] = useState(false);
-  const [walletModalOpen, setWalletModalOpen] = useState(false);
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const { data: ensName } = useEnsName({
     address,
     chainId: 1, // Only try ENS on Ethereum mainnet
     query: { enabled: false } // Disable ENS lookup for now since we're on Ronin
   });
   const { disconnect } = useDisconnect();
+  const { isWalletModalOpen, setWalletModalOpen, switchError, isAutoSwitching } = useWalletContext();
 
   function shortenAddress(addr?: string) {
     if (!addr) return '';
@@ -646,11 +649,6 @@ export default function Home() {
           right: 0;
           height: 240px;
           /* overlay image disabled */
-          /* background-image: url('/assets/overlay-1.png');
-          background-position: center;
-          background-repeat: no-repeat;
-          background-size: contain;
-          opacity: 0.14; */
           pointer-events: none;
           z-index: 0;
         }
@@ -702,18 +700,33 @@ export default function Home() {
               <a href="#" style={{ color: '#fff', textDecoration: 'none', fontWeight: 600, letterSpacing: 1 }}>PROFILE</a>
             </nav>
             {mounted && isConnected ? (
-              <button onClick={() => setWalletModalOpen(true)} style={{
-                background: 'transparent',
-                color: '#fff',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 6,
-                padding: '8px 16px',
-                fontWeight: 700,
-                fontSize: 15,
-                cursor: 'pointer',
-              }}>
-                {ensName ?? shortenAddress(address)}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button onClick={() => setWalletModalOpen(true)} style={{
+                  background: chainId === roninSaigon.id ? 'transparent' : 'rgba(255,179,0,0.1)',
+                  color: chainId === roninSaigon.id ? '#fff' : '#ffb300',
+                  border: `1px solid ${chainId === roninSaigon.id ? 'rgba(255,255,255,0.08)' : 'rgba(255,179,0,0.3)'}`,
+                  borderRadius: 6,
+                  padding: '8px 16px',
+                  fontWeight: 700,
+                  fontSize: 15,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}>
+                  {chainId !== roninSaigon.id && <span style={{ fontSize: 12 }}>⚠</span>}
+                  {ensName ?? shortenAddress(address)}
+                </button>
+                {(switchError || isAutoSwitching) && (
+                  <div style={{
+                    color: isAutoSwitching ? '#ffb300' : '#ff6b6b',
+                    fontSize: 12,
+                    fontWeight: 600
+                  }}>
+                    {isAutoSwitching ? 'Switching...' : 'Network Error'}
+                  </div>
+                )}
+              </div>
             ) : (
               <button onClick={() => setWalletModalOpen(true)} style={{
                 background: '#FFB300',
@@ -838,7 +851,7 @@ export default function Home() {
           </div>
         </footer>
         <WalletSelectionModal
-          open={walletModalOpen}
+          open={isWalletModalOpen}
           onClose={() => setWalletModalOpen(false)}
         />
       </main>

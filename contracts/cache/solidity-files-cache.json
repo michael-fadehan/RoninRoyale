@@ -72,6 +72,80 @@
       "artifacts": [
         "CoinflipP2P"
       ]
+    },
+    "C:\\Users\\USER\\Documents\\Ronin Royale\\contracts\\contracts\\Bottleflip.sol": {
+      "lastModificationDate": 1756704849918,
+      "contentHash": "55b90b5805249eec00a21f2968e6c6b0",
+      "sourceName": "contracts/Bottleflip.sol",
+      "solcConfig": {
+        "version": "0.8.23",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "../libs/ReentrancyGuard.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.23"
+      ],
+      "artifacts": [
+        "Bottleflip"
+      ]
+    },
+    "C:\\Users\\USER\\Documents\\Ronin Royale\\contracts\\libs\\ReentrancyGuard.sol": {
+      "lastModificationDate": 1756704865090,
+      "contentHash": "2aa94e8e1109035eaef1339055055d01",
+      "sourceName": "libs/ReentrancyGuard.sol",
+      "solcConfig": {
+        "version": "0.8.23",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.0"
+      ],
+      "artifacts": [
+        "ReentrancyGuard"
+      ]
     }
   }
 }

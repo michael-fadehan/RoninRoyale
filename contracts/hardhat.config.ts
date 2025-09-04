@@ -15,6 +15,13 @@ const config: HardhatUserConfig = {
       url: "https://saigon-testnet.roninchain.com/rpc",
       chainId: 2021,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      // increase request timeout to avoid SSL / RPC timeouts on slow networks
+      timeout: 120000, // 120 seconds
+      httpHeaders: {
+        // optional: keep-alive can help some providers
+        Connection: "keep-alive",
+      },
+      // providerOptions removed to satisfy Hardhat types
     },
     "ronin-mainnet": {
       url: "https://api.roninchain.com/rpc",

@@ -4,7 +4,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount, useDisconnect, useEnsName, useWalletClient } from 'wagmi';
 import { useBalance } from 'wagmi';
-import WalletSelectionModal from '../../../components/WalletSelectionModal';
+import WalletHeader from '../../../components/WalletHeader';
+import { useWalletContext } from '../../../lib/wallet-context';
+import { roninSaigon } from '../../../lib/reown';
 import { io, Socket } from 'socket.io-client';
 import { BrowserProvider, Contract, parseUnits, Interface } from 'ethers';
 
@@ -64,66 +66,17 @@ export default function CoinFlipPage() {
   useEffect(() => () => { stopSpin(); }, []);
   const [lastResult, setLastResult] = useState(null as null | 'win' | 'lose');
   const [history, setHistory] = useState([] as { wager: number; result: 'win' | 'lose'; payout: number }[]);
-  const [walletModalOpen, setWalletModalOpen] = useState(false);
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const { data: ensName } = useEnsName({
     address,
     chainId: 1, // Only try ENS on Ethereum mainnet
     query: { enabled: false } // Disable ENS lookup for now since we're on Ronin
   });
   const { disconnect } = useDisconnect();
-  const { data: walletClient } = useWalletClient()
-  // determine network via window.ethereum as wagmi useNetwork isn't available in this setup
-  const [currentChainId, setCurrentChainId] = useState(null as number | null)
-  const [injectedAccount, setInjectedAccount] = useState(null as string | null)
-  useEffect(() => {
-    if (typeof window === 'undefined' || !(window as any).ethereum) return
-    try {
-      const parseChainId = (cid: string | number | null) => {
-        if (cid === null || cid === undefined) return null
-        try {
-          if (typeof cid === 'string' && cid.startsWith('0x')) return Number(parseInt(cid.slice(2), 16))
-          return Number(cid)
-        } catch (e) { return null }
-      }
-
-      ;(window as any).ethereum.request({ method: 'eth_chainId' }).then((cid: string) => setCurrentChainId(parseChainId(cid)))
-      ;(window as any).ethereum.request({ method: 'eth_accounts' }).then((accs: string[]) => setInjectedAccount(Array.isArray(accs) && accs.length ? accs[0]?.toLowerCase() : null))
-      ;(window as any).ethereum.on && (window as any).ethereum.on('chainChanged', (cid: string) => setCurrentChainId(parseChainId(cid)))
-      ;(window as any).ethereum.on && (window as any).ethereum.on('accountsChanged', (accs: string[]) => setInjectedAccount(Array.isArray(accs) && accs.length ? accs[0]?.toLowerCase() : null))
-    } catch (e) {}
-  }, [])
-
-  // Auto-switch chain when connected wallet is on wrong chain (use the connected wallet client when possible)
-  useEffect(() => {
-    if (!isConnected) return
-    if (currentChainId === 2021) return
-    const trySwitch = async () => {
-      try {
-        // Prefer the wagmi walletClient.switchChain numeric call
-        if (walletClient && (walletClient as any).switchChain) {
-          await (walletClient as any).switchChain(2021)
-          return
-        }
-        // Fallback to connector request shape
-        if (walletClient && (walletClient as any).request) {
-          await (walletClient as any).request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x7E5' }] })
-          return
-        }
-        // Final fallback to injected provider
-        if (typeof window !== 'undefined' && (window as any).ethereum && (window as any).ethereum.request) {
-          await (window as any).ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x7E5' }] })
-          return
-        }
-      } catch (e: any) {
-        console.error('auto chain switch failed', e)
-        setSettlementError('Please switch your wallet network to Ronin Saigon (chainId 2021) in your wallet.')
-      }
-    }
-    trySwitch()
-  }, [isConnected, currentChainId, walletClient])
+  const { data: walletClient } = useWalletClient();
   const { data: ronBalance, refetch: refetchBalance } = useBalance({ address, chainId: 2021 });
   const [settlementError, setSettlementError] = useState(null as string | null);
+  const { isWalletModalOpen, setWalletModalOpen, switchError, isAutoSwitching, ensureCorrectNetwork } = useWalletContext();
 
   const houseAbi = [
     { "inputs": [ { "internalType": "bool", "name": "choice", "type": "bool" } ], "name": "flip", "outputs": [ { "internalType": "bool", "name": "won", "type": "bool" }, { "internalType": "uint256", "name": "payout", "type": "uint256" } ], "stateMutability": "payable", "type": "function" },
@@ -157,7 +110,7 @@ export default function CoinFlipPage() {
       const didWin = payload?.winner && payload.winner === s.id
       setLastResult(didWin ? 'win' : 'lose')
       const payout = didWin ? wager * 2 : 0
-      setHistory(h => [{ wager, result: didWin ? 'win' : 'lose', payout }, ...h].slice(0, 10))
+      setHistory(h => [{ wager, result: (didWin ? 'win' : 'lose') as 'win' | 'lose', payout }, ...h].slice(0, 10))
     })
     // fetch lobby initially and every 5s
     const load = () => s.emit('list_rooms', (list: any) => setLobby(list || []))
@@ -455,7 +408,7 @@ export default function CoinFlipPage() {
       // Update UI with results
       setFlipping(false);
       setLastResult(didWin ? 'win' : 'lose');
-      setHistory(h => [{ wager, result: didWin ? 'win' : 'lose', payout }, ...h].slice(0, 10));
+      setHistory(h => [{ wager, result: (didWin ? 'win' : 'lose') as 'win' | 'lose', payout }, ...h].slice(0, 10));
 
     } catch (e) {
       console.error('Flip failed:', e);
@@ -466,37 +419,7 @@ export default function CoinFlipPage() {
 
   return (
     <>
-      <header
-        style={{
-          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
-          width: '100%', height: '72px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          backgroundColor: '#000000', padding: '0 32px', margin: 0, boxSizing: 'border-box'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          <img src="/assets/Logo.png" alt="Logo" style={{ width: 58, height: 58 }} />
-          <nav style={{ display: 'flex', alignItems: 'center' }}>
-            <a href="/" className="nav-link">Home</a>
-            <span style={{ width: 1, height: 24, background: '#666', margin: '0 12px' }} />
-            <a href="/staking" className="nav-link">Staking</a>
-            <span style={{ width: 1, height: 24, background: '#666', margin: '0 12px' }} />
-            <a href="/#quest" className="nav-link">Quest</a>
-            <span style={{ width: 1, height: 24, background: '#666', margin: '0 12px' }} />
-            <a href="/#casino" className="nav-link">Casino</a>
-          </nav>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          {!isConnected ? (
-            <button className="connect-btn" onClick={() => setWalletModalOpen(true)}>CONNECT WALLET</button>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ color: '#fff', fontWeight: 700 }}>{ensName || shortenAddress(address)}</div>
-              <div style={{ color: '#B2FF59', fontWeight: 800 }}>{ronBalance ? `${Number(ronBalance.formatted).toFixed(4)} RON` : '...'}</div>
-              <button style={{ background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '8px 12px', borderRadius: 6 }} onClick={() => disconnect()}>Disconnect</button>
-            </div>
-          )}
-        </div>
-      </header>
+      <WalletHeader />
 
       <div className="game-wrap">
       <div className="panel">
@@ -556,7 +479,23 @@ export default function CoinFlipPage() {
         </div>
 
         {mode === 'single' ? (
-          <button className="flip-btn" onClick={flip} disabled={flipping || !isConnected}>FLIP</button>
+          <button
+            className="flip-btn"
+            onClick={async () => {
+              if (!isConnected) {
+                setWalletModalOpen(true);
+                return;
+              }
+              if (chainId !== roninSaigon.id) {
+                const switched = await ensureCorrectNetwork();
+                if (!switched) return;
+              }
+              flip();
+            }}
+            disabled={flipping || !isConnected || isAutoSwitching}
+          >
+            {isAutoSwitching ? 'Switching Network...' : 'FLIP'}
+          </button>
         ) : (
           <div className="mp-controls">
             {!room && <button className="flip-btn" onClick={createRoom}>Create Room</button>}
@@ -618,17 +557,31 @@ export default function CoinFlipPage() {
           <button className={`sideTab ${selectedSide === 'heads' ? 'active' : ''}`} onClick={() => !flipping && setSelectedSide('heads')}>HEADS</button>
           <button className={`sideTab ${selectedSide === 'tails' ? 'active' : ''}`} onClick={() => !flipping && setSelectedSide('tails')}>TAILS</button>
         </div>
-        {currentChainId && currentChainId !== 2021 && isConnected && (
-          <div style={{ marginTop: 12, color: '#ffcc66', fontWeight: 700 }}>
-            Please switch your wallet network to <strong>Ronin Saigon (chainId 2021)</strong> — currently on {String(currentChainId)}
+        {chainId && chainId !== roninSaigon.id && isConnected && (
+          <div style={{ marginTop: 12, color: '#ffcc66', fontWeight: 700, textAlign: 'center' }}>
+            Please switch your wallet network to <strong>Ronin Saigon (chainId 2021)</strong> — currently on {String(chainId)}
           </div>
         )}
-        <button className="stageFlip" onClick={flip} disabled={flipping || !isConnected || wager <= 0 || wager > walletBalance || (currentChainId && currentChainId !== 2021)}>
-          {flipping ? 'Flipping...' : 'Flip'}
+        <button
+          className="stageFlip"
+          onClick={async () => {
+            if (!isConnected) {
+              setWalletModalOpen(true);
+              return;
+            }
+            if (chainId !== roninSaigon.id) {
+              const switched = await ensureCorrectNetwork();
+              if (!switched) return;
+            }
+            flip();
+          }}
+          disabled={flipping || !isConnected || wager <= 0 || wager > walletBalance || isAutoSwitching}
+        >
+          {isAutoSwitching ? 'Switching Network...' : flipping ? 'Flipping...' : 'Flip'}
         </button>
-        {settlementError && (
-          <div style={{ marginTop: 12, color: '#ffb4b4', fontWeight: 700 }}>
-            Error: {settlementError}
+        {(settlementError || switchError) && (
+          <div style={{ marginTop: 12, color: '#ffb4b4', fontWeight: 700, textAlign: 'center' }}>
+            Error: {switchError || settlementError}
           </div>
         )}
       </div>
@@ -831,7 +784,6 @@ export default function CoinFlipPage() {
           <span>Contact: info@roninroyale.com</span>
         </div>
       </footer>
-      <WalletSelectionModal open={walletModalOpen} onClose={() => setWalletModalOpen(false)} />
     </>
   );
 }

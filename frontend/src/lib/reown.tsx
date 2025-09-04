@@ -4,10 +4,10 @@ import { createConfig, http } from 'wagmi';
 import { mainnet, arbitrum, polygon } from 'wagmi/chains';
 import { walletConnect, injected, coinbaseWallet } from 'wagmi/connectors';
 
-// Ronin Saigon Testnet
+// Ronin Saigon Testnet - Enhanced with proper chain configuration
 const roninSaigon = {
   id: 2021,
-  name: 'Ronin Saigon',
+  name: 'Ronin Saigon Testnet',
   network: 'ronin-testnet',
   nativeCurrency: { name: 'RON', symbol: 'RON', decimals: 18 },
   rpcUrls: {
@@ -17,6 +17,7 @@ const roninSaigon = {
   blockExplorers: {
     default: { name: 'Ronin Explorer', url: 'https://saigon-explorer.roninchain.com' }
   },
+  testnet: true,
 } as const;
 
 // Get projectId from environment
@@ -34,18 +35,23 @@ const metadata = {
   icons: ['/assets/Logo.png']
 };
 
-// Create wagmi config with optimizations for faster connection
+// Enhanced wagmi config with better chain management
 export const config = createConfig({
   chains: [roninSaigon, mainnet, arbitrum, polygon],
   connectors: [
     walletConnect({
       projectId,
       metadata,
-      showQrModal: true
+      showQrModal: true,
+      qrModalOptions: {
+        themeMode: 'dark',
+        themeVariables: {
+          '--wcm-z-index': '9999'
+        }
+      }
     }),
     injected({
       shimDisconnect: true,
-      // Optimize injected connector for faster detection
       target: 'metaMask'
     }),
     coinbaseWallet({
@@ -55,21 +61,44 @@ export const config = createConfig({
   ],
   transports: {
     [roninSaigon.id]: http('https://saigon-testnet.roninchain.com/rpc', {
-      // Add connection optimizations
       batch: true,
       fetchOptions: {
-        timeout: 10000, // 10 second timeout
+        timeout: 15000, // Increased timeout for better reliability
       },
+      retryCount: 3,
+      retryDelay: 1000,
     }),
     [mainnet.id]: http(),
     [arbitrum.id]: http(),
     [polygon.id]: http(),
   },
   ssr: true,
-  // Add storage for connection persistence
+  // Enhanced storage with better error handling
   storage: typeof window !== 'undefined' ? {
-    getItem: (key) => localStorage.getItem(key),
-    setItem: (key, value) => localStorage.setItem(key, value),
-    removeItem: (key) => localStorage.removeItem(key),
+    getItem: (key) => {
+      try {
+        return localStorage.getItem(key);
+      } catch (e) {
+        console.warn('Failed to get item from localStorage:', e);
+        return null;
+      }
+    },
+    setItem: (key, value) => {
+      try {
+        localStorage.setItem(key, value);
+      } catch (e) {
+        console.warn('Failed to set item in localStorage:', e);
+      }
+    },
+    removeItem: (key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {
+        console.warn('Failed to remove item from localStorage:', e);
+      }
+    },
   } : undefined,
 });
+
+// Export the Ronin Saigon chain for use in other components
+export { roninSaigon };

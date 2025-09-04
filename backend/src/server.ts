@@ -10,6 +10,8 @@ const { Server } = require('socket.io') as { Server: any }
 const Redis = require('ioredis') as any
 import crypto from 'crypto'
 import coinflipRouter from './routes/coinflip'
+import bottleflipRouter from './routes/bottleflip'
+import diceRouter from './routes/dice'
 
 dotenv.config()
 
@@ -27,6 +29,8 @@ app.get('/', (_req, res) => {
 })
 
 app.use('/api/games/coinflip', coinflipRouter)
+app.use('/api/games/bottleflip', bottleflipRouter)
+app.use('/api/games/dice', diceRouter)
 
 const httpServer = createServer(app)
 const io = new Server(httpServer, { cors: { origin: '*'} })
@@ -203,6 +207,353 @@ io.of('/coinflip').on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     // Best-effort cleanup: if a player leaves, keep room for rejoin; could add TTL.
+  })
+})
+
+// Bottleflip namespace for chat and presence (Redis-backed when available)
+const bottleNs = io.of('/bottleflip')
+
+async function incrOnline(): Promise<number> {
+  if (redisEnabled) {
+    try { const v = await redis.incr('bottle:online'); return Number(v) } catch { }
+  }
+  // fallback to in-memory count stored on namespace
+  return (Array.from(bottleNs.sockets || []).length) || 0
+}
+
+async function decrOnline(): Promise<number> {
+  if (redisEnabled) {
+    try { const v = await redis.decr('bottle:online'); return Math.max(0, Number(v)) } catch { }
+  }
+  return (Array.from(bottleNs.sockets || []).length) || 0
+}
+
+bottleNs.on('connection', async (socket: any) => {
+  // increase presence
+  const online = await incrOnline()
+  bottleNs.emit('presence', { online })
+
+  // Handle incoming chat messages with rate-limiting, link-checks, warnings and bans
+  socket.on('chat_message', async (payload: any) => {
+    try {
+      const user = payload?.user || 'Anonymous'
+      const message = (payload?.message || '').trim()
+      const sid = socket.id
+
+      // Check ban by socket id
+      if (redisEnabled) {
+        const banKey = `bottle:ban:${sid}`
+        const isBanned = await redis.get(banKey)
+        if (isBanned) {
+          // notify the socket they are banned
+          socket.emit('chat_message', { id: Date.now(), user: 'System', message: `You are banned from chat until ${await redis.ttl(banKey)} seconds.`, time: new Date().toLocaleTimeString() })
+          return
+        }
+      }
+
+      // Rate limiting: 10 seconds per socket
+      if (redisEnabled) {
+        const lastKey = `bottle:lastmsg:${sid}`
+        const last = await redis.get(lastKey)
+        const now = Date.now()
+        if (last && now - Number(last) < 10000) {
+          socket.emit('chat_message', { id: Date.now(), user: 'System', message: 'You are sending messages too quickly. Please wait before sending again.', time: new Date().toLocaleTimeString() })
+          return
+        }
+        await redis.set(lastKey, String(now), 'EX', 60 * 60 * 24)
+      }
+
+      // Link detection
+      const linkRegex = /(https?:\/\/|www\.|\/[a-z0-9_\-]+\.[a-z]{2,})/i
+      if (linkRegex.test(message)) {
+        // increment warnings
+        const warnKey = `bottle:warnings:${sid}`
+        let warnings = 1
+        if (redisEnabled) {
+          warnings = Number(await redis.incr(warnKey))
+          // set TTL for warnings to 7 days
+          await redis.expire(warnKey, 60 * 60 * 24 * 7).catch(() => {})
+        }
+        // warn the user privately and announce to all
+        const warnMsg = { id: Date.now(), user: 'System', message: `${user} sent a link and has been warned (${warnings}/3). Links are not allowed.`, time: new Date().toLocaleTimeString() }
+        bottleNs.emit('chat_message', warnMsg)
+        socket.emit('chat_message', { id: Date.now(), user: 'System', message: `Warning ${warnings}/3: Links are not allowed in chat.`, time: new Date().toLocaleTimeString() })
+
+        // Ban if warnings reach 3
+        if (warnings >= 3) {
+          const banKey = `bottle:ban:${sid}`
+          const banSeconds = 48 * 3600
+          if (redisEnabled) await redis.set(banKey, '1', 'EX', banSeconds)
+          const banMsg = { id: Date.now(), user: 'System', message: `${user} has been banned from chat for 48 hours for repeated link sharing.`, time: new Date().toLocaleTimeString() }
+          bottleNs.emit('chat_message', banMsg)
+          // optionally disconnect the socket
+          try { socket.disconnect(true) } catch (e) {}
+        }
+        return
+      }
+
+      // broadcast normal message
+      const out = { id: Date.now(), user, message, time: new Date().toLocaleTimeString() }
+      bottleNs.emit('chat_message', out)
+    } catch (err) {
+      // ignore
+    }
+  })
+
+  socket.on('disconnect', async () => {
+    const onlineNow = await decrOnline()
+    bottleNs.emit('presence', { online: onlineNow })
+  })
+})
+
+/**
+ * Dice namespace for chat/presence (similar to bottleflip)
+ */
+const diceNs = io.of('/dice')
+
+async function diceIncrOnline(): Promise<number> {
+  if (redisEnabled) {
+    try { const v = await redis.incr('dice:online'); return Number(v) } catch {}
+  }
+  return (Array.from(diceNs.sockets || []).length) || 0
+}
+
+async function diceDecrOnline(): Promise<number> {
+  if (redisEnabled) {
+    try { const v = await redis.decr('dice:online'); return Math.max(0, Number(v)) } catch {}
+  }
+  return (Array.from(diceNs.sockets || []).length) || 0
+}
+
+diceNs.on('connection', async (socket: any) => {
+  const online = await diceIncrOnline()
+  diceNs.emit('presence', { online })
+
+  socket.on('chat_message', async (payload: any) => {
+    try {
+      const user = payload?.user || 'Anonymous'
+      const message = (payload?.message || '').trim()
+      const sid = socket.id
+
+      // Ban check
+      if (redisEnabled) {
+        const banKey = `dice:ban:${sid}`
+        const isBanned = await redis.get(banKey)
+        if (isBanned) {
+          socket.emit('chat_message', { id: Date.now(), user: 'System', message: `You are banned from chat until ${await redis.ttl(banKey)} seconds.`, time: new Date().toLocaleTimeString() })
+          return
+        }
+      }
+
+      // Rate limit: 10s per socket
+      if (redisEnabled) {
+        const lastKey = `dice:lastmsg:${sid}`
+        const last = await redis.get(lastKey)
+        const now = Date.now()
+        if (last && now - Number(last) < 10000) {
+          socket.emit('chat_message', { id: Date.now(), user: 'System', message: 'You are sending messages too quickly. Please wait.', time: new Date().toLocaleTimeString() })
+          return
+        }
+        await redis.set(lastKey, String(now), 'EX', 60 * 60 * 24)
+      }
+
+      // Link detection + escalating warnings
+      const linkRegex = /(https?:\/\/|www\.|\/[a-z0-9_\-]+\.[a-z]{2,})/i
+      if (linkRegex.test(message)) {
+        const warnKey = `dice:warnings:${sid}`
+        let warnings = 1
+        if (redisEnabled) {
+          warnings = Number(await redis.incr(warnKey))
+          await redis.expire(warnKey, 60 * 60 * 24 * 7).catch(() => {})
+        }
+        diceNs.emit('chat_message', { id: Date.now(), user: 'System', message: `${user} sent a link and has been warned (${warnings}/3). Links are not allowed.`, time: new Date().toLocaleTimeString() })
+        socket.emit('chat_message', { id: Date.now(), user: 'System', message: `Warning ${warnings}/3: Links are not allowed in chat.`, time: new Date().toLocaleTimeString() })
+        if (warnings >= 3) {
+          const banKey = `dice:ban:${sid}`
+          const banSeconds = 48 * 3600
+          if (redisEnabled) await redis.set(banKey, '1', 'EX', banSeconds)
+          diceNs.emit('chat_message', { id: Date.now(), user: 'System', message: `${user} has been banned from chat for 48 hours.`, time: new Date().toLocaleTimeString() })
+          try { socket.disconnect(true) } catch {}
+        }
+        return
+      }
+
+      // Normal message
+      const out = { id: Date.now(), user, message, time: new Date().toLocaleTimeString() }
+      diceNs.emit('chat_message', out)
+    } catch {}
+  })
+
+  socket.on('disconnect', async () => {
+    const onlineNow = await diceDecrOnline()
+    diceNs.emit('presence', { online: onlineNow })
+  })
+})
+/**
+ * Fruit-punch namespace for chat/presence (similar to bottleflip and dice)
+ */
+const fruitPunchNs = io.of('/fruit-punch')
+
+async function fruitPunchIncrOnline(): Promise<number> {
+  if (redisEnabled) {
+    try { const v = await redis.incr('fruitpunch:online'); return Number(v) } catch {}
+  }
+  return (Array.from(fruitPunchNs.sockets || []).length) || 0
+}
+
+async function fruitPunchDecrOnline(): Promise<number> {
+  if (redisEnabled) {
+    try { const v = await redis.decr('fruitpunch:online'); return Math.max(0, Number(v)) } catch {}
+  }
+  return (Array.from(fruitPunchNs.sockets || []).length) || 0
+}
+
+fruitPunchNs.on('connection', async (socket: any) => {
+  const online = await fruitPunchIncrOnline()
+  fruitPunchNs.emit('presence', { online })
+
+  socket.on('chat_message', async (payload: any) => {
+    try {
+      const user = payload?.user || 'Anonymous'
+      const message = (payload?.message || '').trim()
+      const sid = socket.id
+
+      // Ban check
+      if (redisEnabled) {
+        const banKey = `fruitpunch:ban:${sid}`
+        const isBanned = await redis.get(banKey)
+        if (isBanned) {
+          socket.emit('chat_message', { id: Date.now(), user: 'System', message: `You are banned from chat until ${await redis.ttl(banKey)} seconds.`, time: new Date().toLocaleTimeString() })
+          return
+        }
+      }
+
+      // Rate limit: 10s per socket
+      if (redisEnabled) {
+        const lastKey = `fruitpunch:lastmsg:${sid}`
+        const last = await redis.get(lastKey)
+        const now = Date.now()
+        if (last && now - Number(last) < 10000) {
+          socket.emit('chat_message', { id: Date.now(), user: 'System', message: 'You are sending messages too quickly. Please wait.', time: new Date().toLocaleTimeString() })
+          return
+        }
+        await redis.set(lastKey, String(now), 'EX', 60 * 60 * 24)
+      }
+
+      // Link detection + escalating warnings
+      const linkRegex = /(https?:\/\/|www\.|\/[a-z0-9_\-]+\.[a-z]{2,})/i
+      if (linkRegex.test(message)) {
+        const warnKey = `fruitpunch:warnings:${sid}`
+        let warnings = 1
+        if (redisEnabled) {
+          warnings = Number(await redis.incr(warnKey))
+          await redis.expire(warnKey, 60 * 60 * 24 * 7).catch(() => {})
+        }
+        fruitPunchNs.emit('chat_message', { id: Date.now(), user: 'System', message: `${user} sent a link and has been warned (${warnings}/3). Links are not allowed.`, time: new Date().toLocaleTimeString() })
+        socket.emit('chat_message', { id: Date.now(), user: 'System', message: `Warning ${warnings}/3: Links are not allowed in chat.`, time: new Date().toLocaleTimeString() })
+        if (warnings >= 3) {
+          const banKey = `fruitpunch:ban:${sid}`
+          const banSeconds = 48 * 3600
+          if (redisEnabled) await redis.set(banKey, '1', 'EX', banSeconds)
+          fruitPunchNs.emit('chat_message', { id: Date.now(), user: 'System', message: `${user} has been banned from chat for 48 hours.`, time: new Date().toLocaleTimeString() })
+          try { socket.disconnect(true) } catch {}
+        }
+        return
+      }
+
+      // Normal message
+      const out = { id: Date.now(), user, message, time: new Date().toLocaleTimeString() }
+      fruitPunchNs.emit('chat_message', out)
+    } catch {}
+  })
+
+  socket.on('disconnect', async () => {
+    const onlineNow = await fruitPunchDecrOnline()
+    fruitPunchNs.emit('presence', { online: onlineNow })
+  })
+})
+
+/**
+ * Higher namespace for chat/presence (similar to other games)
+ */
+const higherNs = io.of('/higher')
+
+async function higherIncrOnline(): Promise<number> {
+  if (redisEnabled) {
+    try { const v = await redis.incr('higher:online'); return Number(v) } catch {}
+  }
+  return (Array.from(higherNs.sockets || []).length) || 0
+}
+
+async function higherDecrOnline(): Promise<number> {
+  if (redisEnabled) {
+    try { const v = await redis.decr('higher:online'); return Math.max(0, Number(v)) } catch {}
+  }
+  return (Array.from(higherNs.sockets || []).length) || 0
+}
+
+higherNs.on('connection', async (socket: any) => {
+  const online = await higherIncrOnline()
+  higherNs.emit('presence', { online })
+
+  socket.on('chat_message', async (payload: any) => {
+    try {
+      const user = payload?.user || 'Anonymous'
+      const message = (payload?.message || '').trim()
+      const sid = socket.id
+
+      // Ban check
+      if (redisEnabled) {
+        const banKey = `higher:ban:${sid}`
+        const isBanned = await redis.get(banKey)
+        if (isBanned) {
+          socket.emit('chat_message', { id: Date.now(), user: 'System', message: `You are banned from chat until ${await redis.ttl(banKey)} seconds.`, time: new Date().toLocaleTimeString() })
+          return
+        }
+      }
+
+      // Rate limit: 10s per socket
+      if (redisEnabled) {
+        const lastKey = `higher:lastmsg:${sid}`
+        const last = await redis.get(lastKey)
+        const now = Date.now()
+        if (last && now - Number(last) < 10000) {
+          socket.emit('chat_message', { id: Date.now(), user: 'System', message: 'You are sending messages too quickly. Please wait.', time: new Date().toLocaleTimeString() })
+          return
+        }
+        await redis.set(lastKey, String(now), 'EX', 60 * 60 * 24)
+      }
+
+      // Link detection + escalating warnings
+      const linkRegex = /(https?:\/\/|www\.|\/[a-z0-9_\-]+\.[a-z]{2,})/i
+      if (linkRegex.test(message)) {
+        const warnKey = `higher:warnings:${sid}`
+        let warnings = 1
+        if (redisEnabled) {
+          warnings = Number(await redis.incr(warnKey))
+          await redis.expire(warnKey, 60 * 60 * 24 * 7).catch(() => {})
+        }
+        higherNs.emit('chat_message', { id: Date.now(), user: 'System', message: `${user} sent a link and has been warned (${warnings}/3). Links are not allowed.`, time: new Date().toLocaleTimeString() })
+        socket.emit('chat_message', { id: Date.now(), user: 'System', message: `Warning ${warnings}/3: Links are not allowed in chat.`, time: new Date().toLocaleTimeString() })
+        if (warnings >= 3) {
+          const banKey = `higher:ban:${sid}`
+          const banSeconds = 48 * 3600
+          if (redisEnabled) await redis.set(banKey, '1', 'EX', banSeconds)
+          higherNs.emit('chat_message', { id: Date.now(), user: 'System', message: `${user} has been banned from chat for 48 hours.`, time: new Date().toLocaleTimeString() })
+          try { socket.disconnect(true) } catch {}
+        }
+        return
+      }
+
+      // Normal message
+      const out = { id: Date.now(), user, message, time: new Date().toLocaleTimeString() }
+      higherNs.emit('chat_message', out)
+    } catch {}
+  })
+
+  socket.on('disconnect', async () => {
+    const onlineNow = await higherDecrOnline()
+    higherNs.emit('presence', { online: onlineNow })
   })
 })
 

@@ -34,10 +34,9 @@
     "postcss": "*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "swiper": "^11.2.10",
     "socket.io-client": "^4.7.5",
+    "swiper": "^11.2.10",
     "tailwindcss": "*",
-    "typescript": "*",
     "viem": "^2.31.0",
     "wagmi": "^2.16.6"
   },
@@ -46,6 +45,7 @@
     "@typescript-eslint/parser": "*",
     "eslint": "*",
     "eslint-config-next": "*",
-    "pino-pretty": "^13.1.1"
+    "pino-pretty": "^13.1.1",
+    "typescript": "^5.9.2"
   }
 }

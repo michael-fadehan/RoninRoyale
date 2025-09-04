@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useConnect, useAccount, useDisconnect } from 'wagmi';
+import { useWalletContext } from '../lib/wallet-context';
+import { roninSaigon } from '../lib/reown';
 
 interface WalletSelectionModalProps {
   open: boolean;
@@ -10,31 +12,26 @@ interface WalletSelectionModalProps {
 
 export default function WalletSelectionModal({ open, onClose }: WalletSelectionModalProps) {
   const { connect, connectors, isPending, error } = useConnect();
-  const { isConnected, address } = useAccount();
+  const { isConnected, address, chainId } = useAccount();
   const { disconnect } = useDisconnect();
+  const { isAutoSwitching, switchError, clearSwitchError, ensureCorrectNetwork } = useWalletContext();
   const [connectingConnector, setConnectingConnector] = useState(null as string | null);
-
-  // Close modal when successfully connected - faster response
-  useEffect(() => {
-    if (isConnected) {
-      setConnectingConnector(null);
-      // Faster close for better UX
-      setTimeout(() => {
-        onClose();
-      }, 800); // Reduced from 1500ms to 800ms
-    }
-  }, [isConnected, onClose]);
 
   // Reset connecting state when modal closes
   useEffect(() => {
     if (!open) {
       setConnectingConnector(null);
+      clearSwitchError();
     }
-  }, [open]);
+  }, [open, clearSwitchError]);
+
+  // Check if we're on the correct network
+  const isOnCorrectNetwork = chainId === roninSaigon.id;
 
   const handleConnect = async (connector: any) => {
     try {
       setConnectingConnector(connector.id);
+      clearSwitchError();
       
       if (connector.id === 'walletConnect') {
         // Close our modal completely and let WalletConnect handle its own modal
@@ -43,14 +40,18 @@ export default function WalletSelectionModal({ open, onClose }: WalletSelectionM
       
       await connect({ connector });
       
+      // After connection, the wallet context will handle network switching
       if (connector.id !== 'walletConnect') {
-        // Don't close immediately, let the useEffect handle it
-        // This prevents race conditions
+        // Don't close immediately, let the context handle it
       }
     } catch (err) {
       console.error('Connection failed:', err);
       setConnectingConnector(null);
     }
+  };
+
+  const handleNetworkSwitch = async () => {
+    await ensureCorrectNetwork();
   };
 
 
@@ -161,49 +162,115 @@ export default function WalletSelectionModal({ open, onClose }: WalletSelectionM
           </p>
         </div>
 
-        {error && (
-          <div style={{ 
-            color: '#ff6b6b', 
-            background: 'rgba(255,107,107,0.1)', 
-            padding: 12, 
-            borderRadius: 8, 
+        {(error || switchError) && (
+          <div style={{
+            color: '#ff6b6b',
+            background: 'rgba(255,107,107,0.1)',
+            padding: 12,
+            borderRadius: 8,
             marginBottom: 16,
             fontSize: '0.9rem',
             border: '1px solid rgba(255,107,107,0.2)'
           }}>
-            {error.message || 'Connection failed'}
+            {switchError || error?.message || 'Connection failed'}
+          </div>
+        )}
+
+        {isConnected && !isOnCorrectNetwork && (
+          <div style={{
+            color: '#ffb300',
+            background: 'rgba(255,179,0,0.1)',
+            padding: 12,
+            borderRadius: 8,
+            marginBottom: 16,
+            fontSize: '0.9rem',
+            border: '1px solid rgba(255,179,0,0.2)',
+            textAlign: 'center'
+          }}>
+            <div style={{ marginBottom: 8 }}>
+              Wrong Network! Please switch to Ronin Saigon Testnet
+            </div>
+            <button
+              onClick={handleNetworkSwitch}
+              disabled={isAutoSwitching}
+              style={{
+                background: '#ffb300',
+                color: '#000',
+                border: 'none',
+                borderRadius: 6,
+                padding: '6px 12px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: isAutoSwitching ? 'not-allowed' : 'pointer',
+                opacity: isAutoSwitching ? 0.6 : 1
+              }}
+            >
+              {isAutoSwitching ? 'Switching...' : 'Switch Network'}
+            </button>
           </div>
         )}
 
         {isConnected ? (
-          <div style={{ 
-            background: 'rgba(76,175,80,0.1)', 
-            border: '1px solid rgba(76,175,80,0.3)',
-            borderRadius: 12, 
-            padding: 16, 
+          <div style={{
+            background: isOnCorrectNetwork ? 'rgba(76,175,80,0.1)' : 'rgba(255,179,0,0.1)',
+            border: `1px solid ${isOnCorrectNetwork ? 'rgba(76,175,80,0.3)' : 'rgba(255,179,0,0.3)'}`,
+            borderRadius: 12,
+            padding: 16,
             textAlign: 'center',
             marginBottom: 16
           }}>
-            <div style={{ color: '#4caf50', fontSize: '2rem', marginBottom: 8 }}>✓</div>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Connected Successfully!</div>
-            <div style={{ color: '#aaa', fontSize: '0.9rem', marginBottom: 16 }}>
+            <div style={{
+              color: isOnCorrectNetwork ? '#4caf50' : '#ffb300',
+              fontSize: '2rem',
+              marginBottom: 8
+            }}>
+              {isOnCorrectNetwork ? '✓' : '⚠'}
+            </div>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>
+              {isOnCorrectNetwork ? 'Connected Successfully!' : 'Connected - Wrong Network'}
+            </div>
+            <div style={{ color: '#aaa', fontSize: '0.9rem', marginBottom: 8 }}>
               {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : ''}
             </div>
-            <button 
-              onClick={() => { disconnect(); onClose(); }}
-              style={{
-                background: 'rgba(255,107,107,0.2)',
-                color: '#ff6b6b',
-                border: '1px solid rgba(255,107,107,0.3)',
-                borderRadius: 8,
-                padding: '8px 16px',
-                cursor: 'pointer',
-                fontSize: '0.9rem',
-                fontWeight: 600
-              }}
-            >
-              Disconnect
-            </button>
+            <div style={{ color: '#aaa', fontSize: '0.8rem', marginBottom: 16 }}>
+              Network: {chainId === roninSaigon.id ? 'Ronin Saigon ✓' : `Chain ${chainId} (Wrong)`}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              {!isOnCorrectNetwork && (
+                <button
+                  onClick={handleNetworkSwitch}
+                  disabled={isAutoSwitching}
+                  style={{
+                    background: 'rgba(255,179,0,0.2)',
+                    color: '#ffb300',
+                    border: '1px solid rgba(255,179,0,0.3)',
+                    borderRadius: 8,
+                    padding: '8px 16px',
+                    cursor: isAutoSwitching ? 'not-allowed' : 'pointer',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    opacity: isAutoSwitching ? 0.6 : 1
+                  }}
+                >
+                  {isAutoSwitching ? 'Switching...' : 'Switch Network'}
+                </button>
+              )}
+              <button
+                onClick={() => { disconnect(); onClose(); }}
+                style={{
+                  background: 'rgba(255,107,107,0.2)',
+                  color: '#ff6b6b',
+                  border: '1px solid rgba(255,107,107,0.3)',
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: 600
+                }}
+              >
+                Disconnect
+              </button>
+            </div>
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 12 }}>

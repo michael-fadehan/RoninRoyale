@@ -12,7 +12,7 @@ export default function PageShell({ children }: { children: React.ReactNode }) {
   let overlayOpacity = 0.18;
   let overlayTint = 'rgba(0,0,0,0)';
   if (pathname?.startsWith('/staking')) {
-    overlayImage = '/assets/overlay-1.png';
+    overlayImage = '';
     overlayOpacity = 0.22;
     overlayTint = 'rgba(12,12,12,0.12)';
   } else if (pathname?.startsWith('/profile')) {
@@ -20,7 +20,7 @@ export default function PageShell({ children }: { children: React.ReactNode }) {
     overlayOpacity = 0.24;
     overlayTint = 'rgba(0,0,0,0.14)';
   } else if (pathname?.startsWith('/games')) {
-    overlayImage = '/assets/overlay-1.png';
+    overlayImage = '';
     overlayOpacity = 0.16;
     overlayTint = 'rgba(0,0,0,0.08)';
   }
@@ -44,6 +44,17 @@ export default function PageShell({ children }: { children: React.ReactNode }) {
         ) : null}
       </div>
       <RouteTransition>{children}</RouteTransition>
+      <footer style={{ width: '100%', background: '#232323', color: '#aaa', textAlign: 'center', padding: '32px 0 24px 0', marginTop: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 32 }}>
+          <span>© {new Date().getFullYear()} Ronin Royale</span>
+          <span>|</span>
+          <a href="/privacy" style={{ color: '#aaa' }}>Privacy Policy</a>
+          <span>|</span>
+          <a href="/terms" style={{ color: '#aaa' }}>Terms of Service</a>
+          <span>|</span>
+          <span>Contact: info@roninroyale.com</span>
+        </div>
+      </footer>
     </>
   );
 }
